@@ -99,9 +99,35 @@ def _room_timer_seconds(room_code: str, fallback: int) -> int:
 # Routes - public
 # ---------------------------------------------------------------------------
 
+def _missing_supabase_config() -> list:
+    """Which Supabase settings this service needs and does not have.
+
+    Mirrors supabase_bridge._require_config(): those two are what every
+    authenticated route depends on.
+    """
+    return [
+        name for name in ("SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY")
+        if not os.getenv(name)
+    ]
+
+
 @app.route("/api/health", methods=["GET"])
 def health():
-    return jsonify({"status": "ok", "event": GAME_SETTINGS["system"]["eventName"]})
+    """Liveness AND readiness.
+
+    "status": "ok" used to mean only that Flask was up, which is the least
+    interesting thing about it: with backend/.env absent the service starts
+    perfectly happily and then fails every authenticated request with
+    "Invalid token: Missing environment variables". At the kiosk that surfaces
+    as "camera module failed to start", which sends operators looking at the
+    webcam instead of at a missing file. So say it here, where setup checks it.
+    """
+    missing = _missing_supabase_config()
+    return jsonify({
+        "status": "ok" if not missing else "degraded",
+        "event": GAME_SETTINGS["system"]["eventName"],
+        "supabase": "configured" if not missing else "MISSING: " + ", ".join(missing),
+    })
 
 
 
@@ -460,7 +486,19 @@ if __name__ == "__main__":
     port = int(os.getenv("PORT", 4000))
     host = os.getenv("HOST", "0.0.0.0")
     debug = os.getenv("FLASK_ENV", "development") == "development"
+    _missing = _missing_supabase_config()
+    if _missing:
+        # Loud on purpose. Every crew-facing route 401s without these, and the
+        # kiosk reports that as a camera fault, so a silent start here costs an
+        # hour of looking in the wrong place.
+        print("=" * 72)
+        print("[!] REFUSING TO PRETEND THIS WORKS: missing " + ", ".join(_missing))
+        print("[!] Copy backend/.env.example to backend/.env and fill it in.")
+        print("[!] Without it: /api/game/video_feed and /api/ml/report return 401,")
+        print("[!] and the kiosk shows 'camera module failed to start'.")
+        print("=" * 72)
     print(f"[*] Heist backend starting on http://{host}:{port}")
+    print(f"[*] Supabase: {'configured' if not _missing else 'NOT CONFIGURED'}")
     print(f"[*] Config: {CONFIG_PATH}")
     print(f"[*] CORS origins: {len(allowed_origins)} allowed")
     # threaded=True is required: the video stream route makes a loopback

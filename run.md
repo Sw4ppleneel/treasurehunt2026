@@ -265,7 +265,13 @@ Confirm it came up:
 curl http://localhost:4000/api/health
 ```
 
-You want `{"status": "ok", "event": "TREASURE by LEAP - A Louvre Heist"}`.
+You want `"status": "ok"` **and `"supabase": "configured"`**. If it says
+`"status": "degraded"` with `"supabase": "MISSING: ..."`, `backend/.env` is
+absent or incomplete - the service is up but every crew-facing route will 401,
+and the kiosk reports that as *"camera module failed to start"*, which sends you
+looking at the webcam instead of at a missing file. `backend/.env` is gitignored,
+so it does not arrive with a `git pull`: it has to be created on each of these
+two machines.
 
 > **Why port 4000 and not the documented 5000?** On macOS, port 5000 is taken by
 > the AirPlay Receiver and Flask will fail with *"Address already in use"*. If
